@@ -1,0 +1,7 @@
+/build
+/acados_models
+/c_generated_code
+/install
+/log
+mobile_robot_acados_ocp.json
+/src/nmpc_tracker_ros2/nmpc_tracker_ros2/__pycache__
