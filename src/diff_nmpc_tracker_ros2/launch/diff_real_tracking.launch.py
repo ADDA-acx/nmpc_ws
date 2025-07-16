@@ -6,16 +6,16 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    package_dir = get_package_share_directory('nmpc_tracker_ros2')
+    package_dir = get_package_share_directory('diff_nmpc_tracker_ros2')
     rviz_config_file = os.path.join(package_dir, 'rviz', 'nmpc_test.rviz')
     return LaunchDescription([
         Node(
-            package='nmpc_tracker_ros2',
+            package='diff_nmpc_tracker_ros2',
             executable='nmpc_node',
             name='nmpc_controller',
             output='screen'),
         Node(
-            package='nmpc_tracker_ros2',
+            package='diff_nmpc_tracker_ros2',
             executable='ref_pub',
             name='ref_pub',
             output='screen'),

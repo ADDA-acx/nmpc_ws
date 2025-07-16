@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 from glob import glob
 
-package_name = 'nmpc_tracker_ros2'
+package_name = 'diff_nmpc_tracker_ros2'
 
 setup(
     name=package_name,
@@ -31,9 +31,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'diff_model_node = nmpc_tracker_ros2.diff_model_node:main',
-            'diff_nmpc_node   = nmpc_tracker_ros2.diff_nmpc_node:main',
-            'ref_pub = nmpc_tracker_ros2.ref_pub:main',
+            'diff_model_node = diff_nmpc_tracker_ros2.diff_model_node:main',
+            'diff_nmpc_node   = diff_nmpc_tracker_ros2.diff_nmpc_node:main',
+            'ref_pub = diff_nmpc_tracker_ros2.ref_pub:main',
         ],
     },
 )
