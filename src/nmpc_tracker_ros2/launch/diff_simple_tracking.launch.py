@@ -11,13 +11,13 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='nmpc_tracker_ros2',
-            executable='model_node',
+            executable='diff_model_node',
             name='unicycle_sim',
             parameters=[{'init_pose': [0.0, 0.0, 0.0]}],
             output='screen'),
         Node(
             package='nmpc_tracker_ros2',
-            executable='nmpc_node',
+            executable='diff_nmpc_node',
             name='nmpc_controller',
             output='screen'),
         Node(

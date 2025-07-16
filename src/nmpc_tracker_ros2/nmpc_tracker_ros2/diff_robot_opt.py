@@ -13,7 +13,7 @@ import scipy.linalg
 import casadi as ca
 
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
-from .mobile_robot_model import MobileRobotModel
+from .diff_robot_model import MobileRobotModel
 
 
 def safe_mkdir_recursive(directory, overwrite=False):

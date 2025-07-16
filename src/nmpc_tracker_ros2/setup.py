@@ -11,8 +11,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/simple_tracking.launch.py']),
-        ('share/' + package_name + '/launch', ['launch/real_tracking.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/diff_simple_tracking.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/diff_real_tracking.launch.py']),
         ('share/' + package_name + '/rviz',  # ← 新增
         glob('rviz/*.rviz')), 
     ],
@@ -31,8 +31,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'model_node = nmpc_tracker_ros2.model_node:main',
-            'nmpc_node   = nmpc_tracker_ros2.nmpc_node:main',
+            'diff_model_node = nmpc_tracker_ros2.diff_model_node:main',
+            'diff_nmpc_node   = nmpc_tracker_ros2.diff_nmpc_node:main',
             'ref_pub = nmpc_tracker_ros2.ref_pub:main',
         ],
     },

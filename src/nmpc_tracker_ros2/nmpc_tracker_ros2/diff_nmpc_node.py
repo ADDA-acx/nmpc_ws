@@ -12,8 +12,8 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 
 
 from acados_template import AcadosOcpSolver, AcadosSimSolver
-from nmpc_tracker_ros2.mobile_robot_opt import MobileRobotOptimizer
-from nmpc_tracker_ros2.mobile_robot_model import MobileRobotModel
+from nmpc_tracker_ros2.diff_robot_opt import MobileRobotOptimizer
+from nmpc_tracker_ros2.diff_robot_model import MobileRobotModel
 
 HORIZON = 2
 N_NODE  = 200
