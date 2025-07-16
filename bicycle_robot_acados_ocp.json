@@ -50,7 +50,10 @@
         "lbx_e": [],
         "lg": [],
         "lg_e": [],
-        "lh": [],
+        "lh": [
+            -0.004,
+            -0.004
+        ],
         "lh_0": [],
         "lh_e": [],
         "lphi": [],
@@ -80,7 +83,10 @@
         "ubx_e": [],
         "ug": [],
         "ug_e": [],
-        "uh": [],
+        "uh": [
+            0.004,
+            0.004
+        ],
         "uh_0": [],
         "uh_e": [],
         "uphi": [],
@@ -293,10 +299,10 @@
         "nbxe_0": 3,
         "ng": 0,
         "ng_e": 0,
-        "nh": 0,
+        "nh": 2,
         "nh_0": 0,
         "nh_e": 0,
-        "np": 0,
+        "np": 2,
         "np_global": 0,
         "nphi": 0,
         "nphi_0": 0,
@@ -332,6 +338,8 @@
         "bicycle_robot_model/bicycle_robot_expl_vde_adj.c"
     ],
     "external_function_files_ocp": [
+        "bicycle_robot_constraints/bicycle_robot_constr_h_fun_jac_uxt_zt.c",
+        "bicycle_robot_constraints/bicycle_robot_constr_h_fun.c",
         "bicycle_robot_cost/bicycle_robot_cost_y_0_fun.c",
         "bicycle_robot_cost/bicycle_robot_cost_y_0_fun_jac_ut_xt.c",
         "bicycle_robot_cost/bicycle_robot_cost_y_0_hess.c",
@@ -344,7 +352,7 @@
     ],
     "json_file": "./bicycle_robot_acados_ocp.json",
     "model": {
-        "con_h_expr": [],
+        "con_h_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaabaaaaaaaghegpcaaaaaaaaaaaaaadaaaaaaaahpfadegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaaegfgmgehbgegpcaaaaaaaaaaaaaadaaaaaaaahpfbd",
         "con_h_expr_0": [],
         "con_h_expr_e": [],
         "con_phi_expr": [],
@@ -389,7 +397,7 @@
         "gnsf_purely_linear": 0,
         "name": "bicycle_robot",
         "nu_original": null,
-        "p": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "p": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaaahpfadegpcaaaaaaaaaaaaaadaaaaaaaahpfbd",
         "p_global": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "t": [],
         "t0": null,
@@ -403,7 +411,10 @@
     },
     "name": "bicycle_robot",
     "p_global_values": [],
-    "parameter_values": [],
+    "parameter_values": [
+        0.0,
+        0.0
+    ],
     "problem_class": "OCP",
     "shared_lib_ext": ".so",
     "simulink_opts": null,

@@ -35,6 +35,10 @@ class MobileRobotOptimizer:
         self.T, self.N = float(t_horizon), int(n_nodes)
         self.nx = m_model.x.shape[0]
         self.nu = m_model.u.shape[0]
+        dt     = self.T / self.N 
+
+        a_max  = 0.2                           # 纵向加速度上限 m/s²
+        d_max  = 0.2                           # 转角速率上限 rad/s
 
         # ---------- acados 路径 ----------
         acados_path = Path(os.environ["ACADOS_SOURCE_DIR"]).resolve()
@@ -48,7 +52,7 @@ class MobileRobotOptimizer:
         ocp.model               = m_model
         ocp.solver_options.N_horizon = self.N
         ocp.solver_options.tf        = self.T
-        ocp.dims.np = 0
+        ocp.dims.np = 2
 
         # ---------- COST ----------
         ocp.cost.cost_type   = "NONLINEAR_LS"
@@ -58,11 +62,18 @@ class MobileRobotOptimizer:
         # y = [x, y, cosθ, sinθ, v, δ]
         x_sym, y_sym, th_sym = m_model.x[0], m_model.x[1], m_model.x[2]
         v_sym, delta_sym     = m_model.u[0], m_model.u[1]
+        p_sym            = m_model.p          # 就是 (v_prev, delta_prev)
 
         expr_y   = ca.vertcat(x_sym, y_sym, ca.cos(th_sym),
                               ca.sin(th_sym), v_sym, delta_sym)
         expr_y_e = ca.vertcat(x_sym, y_sym,
                               ca.cos(th_sym), ca.sin(th_sym))
+
+
+        h_expr = ca.vertcat(
+        v_sym     - p_sym[0],             # Δv
+        delta_sym - p_sym[1]              # Δδ
+        )
 
         ocp.model.cost_y_expr    = expr_y
         ocp.model.cost_y_expr_e  = expr_y_e
@@ -88,6 +99,10 @@ class MobileRobotOptimizer:
         ocp.dims.ny_0   = 6
         ocp.cost.yref_0 = np.zeros(6)
 
+
+        ocp.model.con_h_expr = h_expr         # 注册到 acados
+        ocp.dims.nh          = 2              # 有两个 h
+
         # ---------- 控制约束 ----------
         ocp.constraints.x0    = np.zeros(self.nx)
         ocp.constraints.lbu   = np.array([m_constraint.v_min,
@@ -95,6 +110,12 @@ class MobileRobotOptimizer:
         ocp.constraints.ubu   = np.array([m_constraint.v_max,
                                           m_constraint.delta_max])
         ocp.constraints.idxbu = np.array([0, 1])
+
+        ocp.constraints.lh   = np.array([-a_max*dt, -d_max*dt])
+        ocp.constraints.uh   = np.array([ a_max*dt,  d_max*dt])
+
+        # ---------- 参数值初始化 ----------
+        ocp.parameter_values = np.zeros(2)  # 初始化参数值 [v_prev, delta_prev]
 
         # ---------- Solver 选项 ----------
         so = ocp.solver_options

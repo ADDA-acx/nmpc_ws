@@ -57,3 +57,6 @@ class MobileRobotModel(object):
         # ---------- 5. Export ----------
         self.model      = model
         self.constraint = constraint
+
+        p_sym = ca.SX.sym('p', 2)      # p[0]=v_prev, p[1]=delta_prev
+        model.p = p_sym                # 告诉 acados 这是 stage-wise 参数

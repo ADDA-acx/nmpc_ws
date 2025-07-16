@@ -45,6 +45,7 @@ class NMPCController(Node):
 
         self.x_now    = None               # 当前状态
         self.tlog     = []
+        self.u_last   = (0.0, 0.0)        # 添加：初始化上一帧控制量 (v, δ)
         
         # 新增：运行时求解时间监控
         self.solve_times = deque(maxlen=TIMING_WINDOW_SIZE)  # 固定长度队列
@@ -169,6 +170,15 @@ class NMPCController(Node):
         self.opt.solver.set(0, "lbx", self.x_now)
         self.opt.solver.set(0, "ubx", self.x_now)
 
+
+        for j in range(self.opt.N):
+            if j == 0:
+                v_prev, d_prev = self.u_last          # 上一帧已实际执行的控制
+            else:
+                v_prev, d_prev = self.opt.solver.get(j-1, "u")
+
+            self.opt.solver.set(j, "p", np.array([v_prev, d_prev]))
+
         # --- 4. 求解 NMPC ---
         tic = timeit.default_timer()
         status = self.opt.solver.solve()
@@ -185,6 +195,7 @@ class NMPCController(Node):
             return
 
         v_cmd, delta_cmd = self.opt.solver.get(0, "u")
+        self.u_last = (v_cmd, delta_cmd)
 
         # --- 5. 发布 /cmd_vel ---
         cmd_msg = Twist()
@@ -284,7 +295,6 @@ def main():
         print(f"   📐 Batch Interpolation: Mean: {interp_ms.mean():.2f}ms | Max: {interp_ms.max():.2f}ms")
         print(f"   🔄 Core Pipeline:    Mean: {(solve_ms.mean() + interp_ms.mean()):.2f}ms")
         print(f"   📊 Percentiles:      P95: {np.percentile(solve_ms, 95):.2f}ms | P99: {np.percentile(solve_ms, 99):.2f}ms")
-
 if __name__ == '__main__':
     main()
     rclpy.init()
