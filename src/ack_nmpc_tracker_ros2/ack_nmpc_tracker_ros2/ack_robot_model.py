@@ -50,8 +50,8 @@ class MobileRobotModel(object):
         constraint = ca.types.SimpleNamespace()
         constraint.v_max     = 1.0            # m/s   (adjust!)
         constraint.v_min     = -0.5          # m/s   (adjust!)
-        constraint.delta_max = 1.0            # ≈ 34°
-        constraint.delta_min = -1.0            # ≈ -34°
+        constraint.delta_max = 0.5            # ≈ 34°
+        constraint.delta_min = -0.5            # ≈ -34°
         constraint.expr      = ca.vertcat(v, delta)
 
         # ---------- 5. Export ----------

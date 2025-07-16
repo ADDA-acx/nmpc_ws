@@ -10,6 +10,13 @@ def generate_launch_description():
     rviz_config_file = os.path.join(package_dir, 'rviz', 'nmpc_test.rviz')
     return LaunchDescription([
         Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d', rviz_config_file],
+            output='screen'
+        ),
+        Node(
             package='ack_nmpc_tracker_ros2',
             executable='ack_model_node',
             name='unicycle_sim',
@@ -25,12 +32,9 @@ def generate_launch_description():
             executable='ref_pub',
             name='ref_pub',
             output='screen'),
-        # Node(
-        #     package='rviz2',
-        #     executable='rviz2',
-        #     name='rviz2',
-        #     arguments=['-d', rviz_config_file],
-        #     output='screen'
-        # )
-
+        Node(
+            package='ack_nmpc_tracker_ros2',
+            executable='cmd_vel_to_overlay',
+            name='cmd_vel_to_overlay',
+            output='screen')
     ])

@@ -13,7 +13,7 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 TOTAL_TIME = 120.0        # s
 HORIZON     = 2.0         # s
 N_NODE      = 200
-A           = 10.0        # “∞”字幅度
+A           = 10.0        # "∞"字幅度
 N_LOOP      = 1
 
 # ------------------------------------------------------------
@@ -32,6 +32,19 @@ def build_reference_path(total_time: float, h: float,
     theta = np.arctan2(dy, dx)
     return np.vstack((x, y, theta)).T   # shape: (N, 3)
 
+def build_light_reference_path(A: float = 10.0, n_loop: int = 1, center_x: float = 0.0, center_y: float = 0.0):
+    """生成轻量级参考轨迹，只包含关键点"""
+    t_end = 2 * np.pi * n_loop
+    # 只取20个关键点
+    t = np.linspace(0.0, t_end, 100)
+
+    x = A * np.sin(t) + center_x
+    y = A * np.sin(t) * np.cos(t) + center_y
+
+    dx, dy = np.gradient(x, t), np.gradient(y, t)
+    theta = np.arctan2(dy, dx)
+    return np.vstack((x, y, theta)).T   # shape: (20, 3)
+
 # ------------------------------------------------------------
 #  Path 发布节点
 # ------------------------------------------------------------
@@ -41,6 +54,7 @@ class RefPublisher(Node):
 
         # 初始化状态
         self.ref = None
+        self.ref_light = None
         self.path_generated = False
         
         # 订阅 odom 获取初始位置
@@ -54,12 +68,15 @@ class RefPublisher(Node):
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,   # 迟到订阅者也能收到
         )
         self.pub = self.create_publisher(Path, '/ref_path', qos)
-
-        # 每 2 s 重发一次，保险起见
-        self.timer = self.create_timer(2.0, self.publish_path)
+        self.pub_light = self.create_publisher(Path, '/ref_path_light', qos)
+        
+        # 创建定时器，每20秒发布轻量级路径
+        self.timer = self.create_timer(2.0, self.publish_light_path)
 
     def odom_callback(self, msg):
         """第一次收到 odom 时生成参考路径"""
+        if self.path_generated:
+            return
         if not self.path_generated:
             # 获取当前位置作为圆心
             center_x = msg.pose.pose.position.x
@@ -69,6 +86,10 @@ class RefPublisher(Node):
             h = HORIZON / N_NODE
             self.ref = build_reference_path(TOTAL_TIME, h, A=A, n_loop=N_LOOP, 
                                           center_x=center_x, center_y=center_y)
+            
+            # 生成轻量级路径
+            self.ref_light = build_light_reference_path(A=A, n_loop=N_LOOP, 
+                                                      center_x=center_x, center_y=center_y)
             
             self.path_generated = True
             self.get_logger().info(f"参考路径已生成，圆心位置: ({center_x:.2f}, {center_y:.2f})")
@@ -102,6 +123,32 @@ class RefPublisher(Node):
 
         self.pub.publish(msg)
         self.get_logger().info(f"Reference path ({len(msg.poses)} pts) published")
+
+    def publish_light_path(self):
+        """发布轻量级参考路径"""
+        if self.ref_light is None:
+            return
+        
+        msg = Path()
+        t_now = self.get_clock().now().to_msg()
+        msg.header.stamp = t_now
+        msg.header.frame_id = 'odom'
+
+        for p in self.ref_light:
+            pose = PoseStamped()
+            pose.header.stamp = t_now
+            pose.header.frame_id = 'odom'
+            pose.pose.position.x = float(p[0])
+            pose.pose.position.y = float(p[1])
+
+            theta = float(p[2])
+            pose.pose.orientation.z = math.sin(theta / 2.0)
+            pose.pose.orientation.w = math.cos(theta / 2.0)
+
+            msg.poses.append(pose)
+
+        self.pub_light.publish(msg)
+        self.get_logger().info(f"Light reference path ({len(msg.poses)} pts) published")
 
 # ------------------------------------------------------------
 def main():

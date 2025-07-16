@@ -34,6 +34,7 @@ setup(
             'ack_model_node = ack_nmpc_tracker_ros2.ack_model_node:main',
             'ack_nmpc_node   = ack_nmpc_tracker_ros2.ack_nmpc_node:main',
             'ref_pub = ack_nmpc_tracker_ros2.ref_pub:main',
+            'cmd_vel_to_overlay = ack_nmpc_tracker_ros2.cmd_vel_to_overlay:main',
         ],
     },
 )
