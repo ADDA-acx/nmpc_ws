@@ -11,20 +11,20 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='diff_nmpc_tracker_ros2',
-            executable='nmpc_node',
+            executable='diff_nmpc_node',
             name='nmpc_controller',
             output='screen'),
-        Node(
-            package='diff_nmpc_tracker_ros2',
-            executable='ref_pub',
-            name='ref_pub',
-            output='screen'),
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            arguments=['-d', rviz_config_file],
-            output='screen'
-        )
+        # Node(
+        #     package='diff_nmpc_tracker_ros2',
+        #     executable='ref_pub',
+        #     name='ref_pub',
+        #     output='screen'),
+        # Node(
+        #     package='rviz2',
+        #     executable='rviz2',
+        #     name='rviz2',
+        #     arguments=['-d', rviz_config_file],
+        #     output='screen'
+        # )
 
     ])

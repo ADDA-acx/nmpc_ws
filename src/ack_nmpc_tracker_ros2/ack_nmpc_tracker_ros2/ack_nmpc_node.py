@@ -26,7 +26,7 @@ from scipy.spatial import cKDTree
 HORIZON    = 2.0      # [s]
 N_NODE     = 100
 CTRL_RATE  = 50.0    # [Hz]
-DEFAULT_V_REF = 0.8   # m/s，可 ROS param 化
+DEFAULT_V_REF = 0.4   # m/s，可 ROS param 化
 
 # 新增：求解时间监控参数
 TIMING_WINDOW_SIZE = 100   # 统计窗口大小
@@ -63,7 +63,7 @@ class NMPCController(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
-        self.sub_ref  = self.create_subscription(Path, '/ref_path',
+        self.sub_ref  = self.create_subscription(Path, '/local_path',
                                                  self.ref_cb, qos)
 
         self.exec_path_pub = self.create_publisher(Path, '/exec_path', 10)

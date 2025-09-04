@@ -49,7 +49,7 @@ class MobileRobotModel(object):
 
         # ------------------------ hard constraints -------------------------
         constraint.v_max = 0.5
-        constraint.v_min = -0.5
+        constraint.v_min = -0.1
         constraint.omega_max = np.pi/4
         constraint.omega_min = -np.pi/4
         constraint.expr = ca.vcat([v, omega])  # for possible future use

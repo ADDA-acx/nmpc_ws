@@ -1,121 +1,179 @@
 #!/usr/bin/env python3
-import os, sys, timeit, math
+# -*- coding: utf-8 -*-
+"""
+diff_nmpc_node.py – NMPC controller for differential-drive model
+Controls:  u = [v, ω]  (linear speed, angular speed)
+
+改动：
+- 使用 KD-Tree 最近点搜索 + 弧长插值 (np.interp)
+- 以弧长 s 均匀采样（ds = v_ref * dt，dt = HORIZON / N_NODE），保证时间一致性
+"""
+
+import os, sys, math, timeit
 from pathlib import Path
 import numpy as np
+
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry
-from nav_msgs.msg import Path
-from geometry_msgs.msg import PoseStamped
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 
+from geometry_msgs.msg import Twist, PoseStamped
+from nav_msgs.msg     import Odometry, Path
 
+from scipy.spatial import cKDTree
+
+# acados (保持与原工程一致的导入路径)
 from acados_template import AcadosOcpSolver, AcadosSimSolver
-from diff_nmpc_tracker_ros2.diff_robot_opt import MobileRobotOptimizer
+from diff_nmpc_tracker_ros2.diff_robot_opt   import MobileRobotOptimizer
 from diff_nmpc_tracker_ros2.diff_robot_model import MobileRobotModel
 
-HORIZON = 2
-N_NODE  = 200
-CTRL_RATE = 100.0   # Hz
+# ------------------------- 参数 -------------------------
+HORIZON       = 2.0      # [s]
+N_NODE        = 100      # 预测离散节点数
+CTRL_RATE     = 50.0    # [Hz]
+DEFAULT_V_REF = 0.5      # [m/s] 参考速度（可视需要改成ROS参数）
 
 class NMPCController(Node):
     def __init__(self):
         super().__init__('nmpc_controller')
 
-        # 声明ROS参数
-        self.declare_parameter('scale', 1)
+        # 可选ROS参数（保留与原版相近的风格）
+        self.declare_parameter('v_ref', DEFAULT_V_REF)
 
-        # --------------- ACADOS initialisation -----------------
+        # --------------- ACADOS 初始化 -----------------
         model = MobileRobotModel()
-        self.opt = MobileRobotOptimizer(model.model,
-                                        model.constraint,
-                                        t_horizon=HORIZON,
-                                        n_nodes=N_NODE)
+        self.opt = MobileRobotOptimizer(
+            model.model,
+            model.constraint,
+            t_horizon=HORIZON,
+            n_nodes=N_NODE
+        )
 
-        self.last_k = 0        # 上一周期的参考索引
-        self.SEARCH = 100      # 向前最多搜索100个离散点（增加搜索范围）
+        self.x_now = None     # 当前状态 (x, y, theta)
+        self.tlog  = []       # 求解时间日志
 
-        self.x_now = None   # will be filled after first odom msg
-        self.tlog   = []
+        # --- 参考轨迹的空间索引容器 ---
+        self.ref_ready = False
+        self.path_xy   = None      # (N,2) 全局路径离散点
+        self.yaw_ref   = None      # (N,)   对应航向角序列
+        self.s_acc     = None      # (N,)   弧长累计
+        self.kdtree    = None      # KD-Tree on path_xy
 
-        # ROS pubs/subs
-        self.pub_cmd = self.create_publisher(Twist, '/cmd_vel', 1)
-        self.sub_odom = self.create_subscription(
-            Odometry, '/odom', self.odom_cb, 1)
+        # ----------------- ROS I/O -----------------
+        self.pub_cmd  = self.create_publisher(Twist, '/cmd_vel', 1)
+        self.sub_odom = self.create_subscription(Odometry, '/odom',
+                                                 self.odom_cb, 1)
 
         qos = QoSProfile(
             depth=1,
             reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
+        self.sub_ref  = self.create_subscription(Path, '/local_path',
+                                                 self.ref_cb, qos)
 
-
-        self.sub_ref = self.create_subscription(Path, '/ref_path',
-                                        self.ref_cb, qos)
-
-        self.ref = None          # 等待接收
-        self.ref_ready = False
-
-        
+        # 可视化发布器
         self.exec_path_pub = self.create_publisher(Path, '/exec_path', 10)
-        self.pred_path_pub = self.create_publisher(Path, '/pred_path', 10)  # 新增：预测轨迹发布器
+        self.pred_path_pub = self.create_publisher(Path, '/pred_path', 10)
 
         self.exec_path_msg = Path()
-        self.exec_path_msg.header.frame_id = 'odom'
+        self.exec_path_msg.header.frame_id = 'map'
 
-        # timer: CTRL_RATE Hz
-        self.timer = self.create_timer(1.0/CTRL_RATE, self.timer_cb)
+        # 控制主循环
+        self.timer = self.create_timer(1.0 / CTRL_RATE, self.timer_cb)
 
-    # ----------------------------------------------------------
+    # ---------------------- 回调 ----------------------
     def odom_cb(self, msg: Odometry):
         q = msg.pose.pose.orientation
-        # yaw from quaternion
-        th = math.atan2(2*(q.w*q.z + q.x*q.y),
-                        1 - 2*(q.y*q.y + q.z*q.z))
+        # 从四元数取 yaw
+        th = math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        )
         self.x_now = np.array([
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
             th
         ])
 
-    # ----------------------------------------------------------
+    def ref_cb(self, msg: Path):
+        """接收 Path 并构建 KD-Tree + 弧长索引"""
+        poses = msg.poses
+        if not poses:
+            self.get_logger().warn("Received empty reference path")
+            self.ref_ready = False
+            return
+
+        N = len(poses)
+        xy  = np.zeros((N, 2), dtype=float)
+        yaw = np.zeros((N, ),  dtype=float)
+        for i, ps in enumerate(poses):
+            xy[i, 0] = ps.pose.position.x
+            xy[i, 1] = ps.pose.position.y
+            q = ps.pose.orientation
+            yaw[i] = math.atan2(
+                2.0 * (q.w * q.z + q.x * q.y),
+                1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            )
+
+        # 计算弧长累计 s_acc
+        ds = np.hypot(np.diff(xy[:, 0]), np.diff(xy[:, 1]))
+        s_acc = np.concatenate(([0.0], np.cumsum(ds)))
+
+        # 构建 KD-Tree
+        self.path_xy = xy
+        self.yaw_ref = yaw
+        self.s_acc   = s_acc
+        self.kdtree  = cKDTree(xy)
+        self.ref_ready = True
+
+        self.get_logger().info(
+            f"Reference path loaded: {N} pts, length={s_acc[-1]:.2f} m"
+        )
+
+    # ---------------------- 主循环 ----------------------
     def timer_cb(self):
         if not self.ref_ready or self.x_now is None:
-            return  # waiting for first odom
+            return
 
-        # 获取采样间隔参数
-        SCALE = int(self.get_parameter('scale').value)
+        # --- 1) 最近点（KD-Tree） -> 得到弧长 s0 ---
+        dist, k = self.kdtree.query(self.x_now[:2])
+        s0 = self.s_acc[k]
 
-        # 前向搜索最近参考点
-        search_end = min(self.last_k + self.SEARCH, len(self.ref) - 1)
-        seg = self.ref[self.last_k : search_end + 1, :2]      # (M,2)
-        dists = np.linalg.norm(seg - self.x_now[:2], axis=1)
-        rel_idx = np.argmin(dists)
-        k = self.last_k + rel_idx
+        # --- 2) 按时间均匀 -> 弧长均匀采样 ---
+        # dt 为单步时长，ds = v_ref * dt
+        v_ref = float(self.get_parameter('v_ref').value)
+        dt_mpc = HORIZON / N_NODE
+        ds = max(1e-6, v_ref * dt_mpc)   # 防止零速导致 ds=0
 
-        # 更新 last_k
-        self.last_k = k
-        
-        ref = self.ref
+        # 生成 (N+1) 个弧长采样点
+        s_vec = s0 + ds * np.arange(self.opt.N + 1, dtype=float)
 
-        # --- rolling yref 填充（使用可调采样间隔）---
+        # --- 3) 批量插值 x/y/yaw ---
+        x_vec = np.interp(s_vec, self.s_acc, self.path_xy[:, 0])
+        y_vec = np.interp(s_vec, self.s_acc, self.path_xy[:, 1])
+        th_vec = np.interp(s_vec, self.s_acc, self.yaw_ref)
+
+        cos_th = np.cos(th_vec)
+        sin_th = np.sin(th_vec)
+
+        # --- 4) 设置滚动参考 yref ---
+        # 差速模型下，yref 结构为 [x, y, cos(th), sin(th), v_ref, 0.0]
+        # 末端（N阶）只给状态参考：[x, y, cos(th), sin(th)]
         for j in range(self.opt.N):
-            idx = min(k + j * SCALE, len(ref) - 1)
-            cos_r, sin_r = np.cos(ref[idx, 2]), np.sin(ref[idx, 2])
-            yref = np.hstack((ref[idx, 0:2], cos_r, sin_r, np.zeros(self.opt.nu)))
+            yref = np.array([x_vec[j], y_vec[j], cos_th[j], sin_th[j],
+                             v_ref, 0.0], dtype=float)
             self.opt.solver.set(j, "yref", yref)
 
-        idx_e = min(k + self.opt.N * SCALE, len(ref) - 1)
-        cos_e, sin_e = np.cos(ref[idx_e, 2]), np.sin(ref[idx_e, 2])
         self.opt.solver.set(self.opt.N, "yref",
-                            np.hstack((ref[idx_e, 0:2], cos_e, sin_e)))
+                            np.array([x_vec[-1], y_vec[-1],
+                                      cos_th[-1], sin_th[-1]], dtype=float))
 
-        # --- current state硬约束 ---
+        # --- 5) 当前状态硬约束 x0 ---
         self.opt.solver.set(0, "lbx", self.x_now)
         self.opt.solver.set(0, "ubx", self.x_now)
 
-        # --- solve NMPC ---
+        # --- 6) 求解 NMPC ---
         tic = timeit.default_timer()
         status = self.opt.solver.solve()
         solve_t = timeit.default_timer() - tic
@@ -125,90 +183,73 @@ class NMPCController(Node):
             self.get_logger().warn(f"ACADOS status {status}")
             return
 
-        u_now = self.opt.solver.get(0, "u")
+        # 取第一步控制
+        u0 = self.opt.solver.get(0, "u")  # [v, ω]
 
-        # --- publish cmd_vel ---
-        msg = Twist()
-        msg.linear.x  = float(u_now[0])
-        msg.angular.z = float(u_now[1])
-        self.pub_cmd.publish(msg)
+        # --- 7) 发布 /cmd_vel ---
+        cmd = Twist()
+        cmd.linear.x  = float(u0[0])
+        cmd.angular.z = float(u0[1])
+        self.pub_cmd.publish(cmd)
 
-        # --- 发布预测轨迹 ---
+        # --- 8) 可视化：预测轨迹与执行轨迹 ---
         self.publish_prediction_path()
+        self.log_executed_path()
 
-        # --- log & publish executed path ---
-        pose = PoseStamped()
-        pose.header.stamp = self.get_clock().now().to_msg()
-        pose.header.frame_id = 'odom'
-        pose.pose.position.x = float(self.x_now[0])
-        pose.pose.position.y = float(self.x_now[1])
-        pose.pose.orientation.z = math.sin(self.x_now[2]/2.0)
-        pose.pose.orientation.w = math.cos(self.x_now[2]/2.0)
-
-        self.exec_path_msg.poses.append(pose)
-        self.exec_path_pub.publish(self.exec_path_msg)
-
-
-    def ref_cb(self, msg: Path):
-        # 转换为 np.array  [N,3]
-        poses = msg.poses
-        if not poses:
-            self.get_logger().warn("Received empty reference path")
-            return
-
-        data = np.zeros((len(poses), 3))
-        for i, ps in enumerate(poses):
-            data[i,0] = ps.pose.position.x
-            data[i,1] = ps.pose.position.y
-            # 取 yaw
-            q = ps.pose.orientation
-            data[i,2] = math.atan2(2*(q.w*q.z + q.x*q.y),
-                                1 - 2*(q.y*q.y + q.z*q.z))
-        self.ref = data
-        self.ref_ready = True
-        self.get_logger().info(f"Reference path received ({len(data)} pts)")
-
-
+    # ------------------ 可视化辅助 ------------------
     def publish_prediction_path(self):
-        """发布NMPC预测状态轨迹用于可视化"""
-        pred_path = Path()
+        """发布 NMPC 预测状态轨迹"""
+        pred = Path()
         t_now = self.get_clock().now().to_msg()
-        pred_path.header.stamp = t_now
-        pred_path.header.frame_id = 'odom'
-        
-        # 获取预测的状态序列
+        pred.header.stamp = t_now
+        pred.header.frame_id = 'map'
+
         for i in range(self.opt.N + 1):
-            x_pred = self.opt.solver.get(i, "x")
-            
+            x_pred = self.opt.solver.get(i, "x")  # [x, y, theta]
+
             pose = PoseStamped()
             pose.header.stamp = t_now
-            pose.header.frame_id = 'odom'
+            pose.header.frame_id = 'map'
             pose.pose.position.x = float(x_pred[0])
             pose.pose.position.y = float(x_pred[1])
-            pose.pose.position.z = 0.0
-            
-            # 从状态中的theta角度转换为四元数
+
             theta = float(x_pred[2])
             pose.pose.orientation.x = 0.0
             pose.pose.orientation.y = 0.0
             pose.pose.orientation.z = math.sin(theta / 2.0)
             pose.pose.orientation.w = math.cos(theta / 2.0)
-            
-            pred_path.poses.append(pose)
-        
-        self.pred_path_pub.publish(pred_path)
 
+            pred.poses.append(pose)
 
+        self.pred_path_pub.publish(pred)
+
+    def log_executed_path(self):
+        """记录并发布执行轨迹"""
+        if self.x_now is None:
+            return
+
+        pose = PoseStamped()
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.header.frame_id = 'map'
+        pose.pose.position.x = float(self.x_now[0])
+        pose.pose.position.y = float(self.x_now[1])
+        pose.pose.orientation.z = math.sin(self.x_now[2] / 2.0)
+        pose.pose.orientation.w = math.cos(self.x_now[2] / 2.0)
+
+        self.exec_path_msg.poses.append(pose)
+        self.exec_path_pub.publish(self.exec_path_msg)
+
+# ------------------------- 主入口 -------------------------
 def main():
     rclpy.init()
     node = NMPCController()
     rclpy.spin(node)
 
-    # --------- after node shutdown: print stats ----------
+    # 结束打印求解统计
     if node.tlog:
         t = np.array(node.tlog) * 1e3  # ms
-        print(f"Solve time ⌀{t.mean():.2f} ms | "
-              f"max {t.max():.2f} ms | min {t.min():.2f} ms")
+        print(f"\nNMPC Solve time: mean={t.mean():.2f} ms | "
+              f"max={t.max():.2f} ms | min={t.min():.2f} ms")
 
 if __name__ == '__main__':
     main()

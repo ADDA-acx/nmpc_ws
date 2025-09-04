@@ -67,9 +67,9 @@ class MobileRobotOptimizer:
         ocp.model.cost_y_expr_0  = expr_y
 
         # 权重矩阵
-        Q_pos = np.diag([1.0, 1.0])
+        Q_pos = np.diag([5.0, 5.0])
         Q_ang = np.diag([3.0, 3.0])
-        R     = np.diag([0.5, 0.05])
+        R     = np.diag([0.5, 2.0])
 
         W   = scipy.linalg.block_diag(Q_pos, Q_ang, R)   # 6×6
         W_e = scipy.linalg.block_diag(Q_pos, Q_ang)      # 4×4

@@ -13,7 +13,7 @@ from acados_template import AcadosModel
 class MobileRobotModel(object):
     """Front-steer bicycle model (x, y, θ) + controls (v, δ)."""
 
-    def __init__(self, wheelbase: float = 1.0):
+    def __init__(self, wheelbase: float = 1.16):
         """wheelbase: 轴距 L (m)"""
         self.L = float(wheelbase)
 
@@ -48,10 +48,10 @@ class MobileRobotModel(object):
 
         # ---------- 4. Hard constraints ----------
         constraint = ca.types.SimpleNamespace()
-        constraint.v_max     = 1.0            # m/s   (adjust!)
-        constraint.v_min     = -0.5          # m/s   (adjust!)
+        constraint.v_max     = 0.6            # m/s   (adjust!)
+        constraint.v_min     = -0.6          # m/s   (adjust!)
         constraint.delta_max = 0.5            # ≈ 34°
-        constraint.delta_min = -0.5            # ≈ -34°
+        constraint.delta_min = -0.5           # ≈ -34°
         constraint.expr      = ca.vertcat(v, delta)
 
         # ---------- 5. Export ----------
